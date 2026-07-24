@@ -1,0 +1,14 @@
+When you press the power button on a modern machine, the CPU doesn't wake up as a 32-bit or 64-bit powerhouse. For backwards compatibility reasons, every x86 processor wakes up thinking it is a 16-bit processor from 1981. This is called Real Mode.
+The motherboard's BIOS wakes up, does a quick hardware check (POST), and then looks for a storage device (a hard drive, a floppy disk, or a USB). But how does the BIOS know if a USB drive just holds MP3 files, or if it actually contains an Operating System?
+It looks for the Master Boot Record (MBR).
+
+The BIOS reads exactly the first 512 bytes (Sector 0) of your disk into memory.
+To prove to the BIOS that this 512-byte block is actually a bootable operating system and not just random data, you must fulfill a strict mathematical contract:
+
+    The Code: The first part of these 512 bytes must contain your executable machine code.
+
+    The Padding: If your code doesn't take up the full 512 bytes (and it won't), you must fill the empty space with zeros.
+
+    The Magic Number: The absolute last two bytes of the 512-byte block (bytes 511 and 512) must be the exact hex signature: 0x55 followed by 0xAA. (In assembly, we usually define this as a single "word" or 2-byte integer: 0xAA55 due to Little Endian architecture).
+
+If the BIOS sees 0xAA55 at the end of the sector, it says, "This is an OS," hands full control of the CPU over to your code, and steps out of the way.
