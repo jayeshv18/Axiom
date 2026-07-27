@@ -22,10 +22,10 @@ org 0x7c00 ;the BIOS always loads us at exactly 0x7C00, we create a variable, NA
 
 ;BIOS uses a two-part pointer called es:bx to define this destination. To be safe, must explicitly set the es (Extra Segment) register to 0 before we set bx to 0x8000
 
-;firstly nned to set ex to 0
+;firstly need to set ex to 0
 mov ax,0x0000 
 mov es,ax ;set the extra segment to 0
-
+//the logic for using the es nd bx regs is written in "es and bx segment mapping limitation "
 mov ah,0x02 ;BIOS command for "Read Sectors into Memory"
 mov al,1;How many sectors do we want to read? Just 1 for now
 mov ch,0 ;Cylinder 0

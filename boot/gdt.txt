@@ -1,0 +1,36 @@
+Why do we need a GDT?
+In 16-bit Real Mode, if we want to access memory, we use the hardware formula: (Segment * 16) + Offset.
+If we put 0x1000 in a segment register, the CPU physically does the math and looks at memory address 0x10000.
+
+In 32-bit Protected Mode, segment registers no longer contain physical addresses.
+Instead, segment registers (cs, ds, es) contain Indexes (like an array index in C). When we tell the CPU to use segment 1, it looks up the 1st entry in a massive master list called the Global Descriptor Table (GDT).
+
+The GDT is literally just a list of ID cards (Descriptors) for different chunks of memory. Each ID card tells the CPU:
+Base: Exactly where this chunk of memory starts.
+Limit: Exactly how big this chunk of memory is.
+Access Byte: Who is allowed to touch it (Ring 0 Kernel vs Ring 3 User).
+Flags: Is this code we can execute, or data we can write to?
+
+To get our C kernel running, we don't want to chop our RAM into a million tiny, complex pieces. We want one massive, unsegmented 4-Gigabyte playground. This is called the Flat Memory Model.
+To build this, our GDT array needs exactly three ID cards:
+
+    Index 0: The Null Descriptor. (Mandatory safety feature. It must be exactly 8 bytes of zeros. If a program uses a null pointer, it hits this and crashes safely).
+    Index 1: The Code Segment. (Starts at 0x0, stretches across all 4GB, marked as Ring-0 Executable).
+    Index 2: The Data Segment. (Starts at 0x0, stretches across all 4GB, marked as Ring-0 Writable).
+
+Here is where the algorithm gets messy. Back in the 1980s, Intel had to maintain backwards compatibility with older chips. So, instead of making the 8-byte descriptor nice and clean (e.g., 4 bytes for Base, 4 bytes for Limit), they chopped the bits up and scattered them.
+To create one 8-byte descriptor, we have to map out the bits exactly like this:
+    Bytes 0-1: Limit Low (The first 16 bits of the size)
+    Bytes 2-3: Base Low (The first 16 bits of the starting address)
+    Byte 4: Base Middle (The next 8 bits of the starting address)
+    Byte 5: Access Byte (Security flags - Ring 0, Present, Executable, etc.)
+    Byte 6: Flags + Limit High (4 bits for granularity/32-bit mode + the last 4 bits of the size)
+    Byte 7: Base High (The last 8 bits of the starting address)
+
+We want a Base of 0x00000000 and a Limit of 0xFFFFF (with a flag that multiplies the limit by 4KB to reach 4GB).
+    Limit Low: 0xFFFF
+    Base Low: 0x0000
+    Base Middle: 0x00
+    Access Byte (Code): 10011010 in binary (which is 0x9A in hex)
+    Flags + Limit High: 11001111 in binary (which is 0xCF in hex)
+    Base High: 0x00

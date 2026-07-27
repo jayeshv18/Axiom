@@ -6,3 +6,5 @@ mov al,'A' ;the character we want to print
 int 0x10 ;call the BIOS to print the character
 halt_loop:
 jmp $
+
+;GDT
