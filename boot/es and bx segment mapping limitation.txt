@@ -1,0 +1,34 @@
+Why es and bx? Why not other registers?
+The short answer is: Because the motherboard's BIOS demands it.
+
+When trigger int 0x13 to read a disk, we are pausing our code and executing a mini-program permanently burned into the motherboard's ROM chip.
+The IBM engineers who wrote that ROM program in the 1980s hardcoded it to look for the memory destination specifically inside the es and bx registers.
+
+If we put our destination address in cx and dx, the BIOS won't look there. It will blindly read whatever random garbage happens to be in es and bx, dump our OS data there, and crash the system.
+Here is what these two specific registers actually do:
+    bx (Base Register): This is a general-purpose register designed specifically for memory addressing. It holds the "offset" (the exact byte we want to target).
+    es (Extra Segment): This is a special architectural register. It defines the "starting block" or "region" of memory we are currently working in.
+
+The Real Mode Memory Problem
+Why does the BIOS need two registers to find a memory address? Why not just pass 0x8000 into one register and be done with it?
+Because in 16-bit Real Mode, a register can only hold a maximum value of 0xFFFF (65,535 bytes, or 64 Kilobytes). If a register can only count up to 64 KB, the CPU can physically never access more than 64 KB of RAM.
+But early PCs had 1 Megabyte of RAM. How do we access 1 MB of memory using registers that can only count to 64 KB?
+
+The Solution: Segment:Offset Math
+To solve this, Intel invented Memory Segmentation. They told the CPU to always use two registers together to calculate a final physical address using a strict mathematical formula:
+    Physical Address = (Segment Register * 16) + Offset Register
+When the BIOS runs int 0x13, it takes the value in es, multiplies it by 16 (which shifts a hex zero to the right), and then adds the value in bx.
+
+Let's do the math on the code:
+ set es = 0x0000
+ set bx = 0x8000
+Calculation: (0x0000 * 16) + 0x8000 = 0x8000
+The CPU successfully calculates that we want the data dumped at exactly physical address 0x8000.
+
+To prove how this works, we could have written our bootloader completely differently and achieved the exact same result.
+Instead of es=0 and bx=0x8000, we could have written:
+mov ax, 0x0800
+mov es, ax (es = 0x0800)
+mov bx, 0x0000 (bx = 0)
+If we feed that into the Intel hardware formula: (0x0800 * 16) + 0 = 0x8000.
+The math results in the exact same physical location. However, in bare-metal programming, setting es to 0 and doing all our math inside bx is much easier for the human brain to keep track of, which is why we architected our bootloader that way.

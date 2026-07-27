@@ -12,3 +12,47 @@ To prove to the BIOS that this 512-byte block is actually a bootable operating s
     The Magic Number: The absolute last two bytes of the 512-byte block (bytes 511 and 512) must be the exact hex signature: 0x55 followed by 0xAA. (In assembly, we usually define this as a single "word" or 2-byte integer: 0xAA55 due to Little Endian architecture).
 
 If the BIOS sees 0xAA55 at the end of the sector, it says, "This is an OS," hands full control of the CPU over to your code, and steps out of the way.
+
+
+If we want to get back to writing a massive, high-performance kernel in pure C—with a multitasking scheduler, memory management, and a Virtual File System, we are going to need way more than 512 bytes.
+The BIOS only loads the first 512 bytes (Sector 0) into RAM automatically. It doesn't care if you have a 10 GB hard drive attached; it stops reading after the magic 0xAA55 signature.
+If we want to execute a larger C kernel, we have to teach our tiny 512-byte bootloader how to read a hard drive and manually pull the rest of the OS into RAM.
+Just like the BIOS has a video driver (int 0x10) that we used to print a character, it also has a primitive disk driver: int 0x13.
+
+In the 1980s, hard drives were physical spinning platters. To find data, the needle needed three coordinates: Cylinder, Head, and Sector (CHS).
+    Sector 1: Contains our 512-byte boot.asm. (Notice that Sectors start counting at 1, not 0!)
+
+    Sector 2: This is where our Stage 2 code will live on the disk.
+
+our target coordinates to read from the disk are: Cylinder 0, Head 0, Sector 2.
+
+We need a safe, empty place in physical RAM to dump the Stage 2 data.
+Our boot.asm is currently sitting at 0x7C00. It takes up 512 bytes (up to 0x7DFF).
+Let's dump our Stage 2 code safely above it at address 0x8000.
+
+(Note: The BIOS uses a two-part pointer called es:bx to define this destination. To be safe, we must explicitly set the es (Extra Segment) register to 0 before we set bx to 0x8000.)
+
+The BIOS checks the padding signature only for sector 1 after that, once we are in stage 2, we need to compile them and fuse them together so that boot.bin is exactly on sector1 and stage2.bin sits immediately after it on sector 2.
+Once we are in Stage 2, the BIOS restrictions are gone. This file can be 5 bytes long or 50,000 bytes long.
+
+    The BIOS wakes up and reads Sector 1 (boot.bin) into RAM at 0x7C00.
+
+    Stage 1 takes over, commands the int 0x13 disk driver to read Sector 2 (stage2.bin) into RAM at 0x8000, and then blindly jumps there.
+
+    Stage 2 wakes up at 0x8000, commands the int 0x10 video driver, and prints a 'K' to the screen before locking the CPU.
+
+In the beginning the CPU is turned on, it thinks it's in the 1980s era and is trapped in real mode (16 bit mode), this is done to this date because of backward compatibility.
+In 16 bit real mode, can only access a maximum of 1 Megabyte of RAM. There is zero security. Any program can overwrite the kernel or the BIOS and instantly fry the system. forced to use 16-bit assembly instructions. GCC and standard C compilers cannot generate 16-bit code natively.
+with this the 16 bit real mode is over, and we can proceed to 32 bit protected mode.
+To run a high-performance C kernel, we must upgrade the CPU to 32-Bit Protected Mode
+
+
+-> Transitioning to 32 Bit Mode
+Transitioning to 32-bit mode is a violent, one-way hardware maneuver. Once we flip the switch, the BIOS interrupts (int 0x10, int 0x13) will permanently cease to function. We will be entirely on our own.
+the exact 4-step sequence we must write in stage2.asm to unlock the CPU:
+    We must disable all hardware interrupts. If a keyboard press or a timer tick triggers an interrupt while we are halfway through upgrading the CPU architecture, the processor will panic and Triple Fault. This will be turned on after successfully transitioning.
+    We must define a Global Descriptor Table. Because we are leaving the 1-Megabyte Real Mode limit, we have to tell the CPU exactly where the new 4-Gigabyte memory boundaries are, defining a secure 32-bit "Code Segment" and a 32-bit "Data Segment".
+    We take the CR0 (Control Register 0) inside the CPU, and we physically flip its very first bit (the Protection Enable bit) from a 0 to a 1.
+    The moment CR0 is flipped, the CPU is technically in 32-bit mode, but its internal pipelines are still clogged with leftover 16-bit instructions. We execute a massive "Far Jump" to a new memory segment to forcefully flush the CPU pipeline and land cleanly in the 32-bit world.
+
+    In short, we need to turn on the A20 address line to transition to 32 bit mode... as A0 to A19 gives the memory usage upto 1MB.
