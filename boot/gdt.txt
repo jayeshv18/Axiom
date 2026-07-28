@@ -34,3 +34,38 @@ We want a Base of 0x00000000 and a Limit of 0xFFFFF (with a flag that multiplies
     Access Byte (Code): 10011010 in binary (which is 0x9A in hex)
     Flags + Limit High: 11001111 in binary (which is 0xCF in hex)
     Base High: 0x00
+
+-> Simplified Explanation
+
+We want this Code Segment to start at the absolute bottom of physical RAM (address 0) and stretch all the way to the 4-Gigabyte ceiling.
+This is the easiest part. We want the memory to start at 0x00000000 (a 32-bit zero).
+Because of Intel's fragmented 8-byte blueprint, we have to chop that 32-bit zero into three pieces:
+    Base Low (16 bits): 0x0000
+    Base Middle (8 bits): 0x00
+    Base High (8 bits): 0x00
+    If you stitch them back together, they equal exactly 0x00000000.
+
+Here is where the math gets fascinating. We want a size of 4 Gigabytes. In hexadecimal, 4GB is 0xFFFFFFFF (32 bits long).
+Intel only gave us 20 bits to define the Limit inside the descriptor. The maximum number a 20-bit register can hold is 0xFFFFF.
+If you convert 0xFFFFF to decimal, it is exactly 1,048,575 bytes (1 Megabyte). If we just use that, our kernel will crash the second it tries to use more than 1MB of RAM.
+
+Solution: The Granularity Multiplier
+Intel added a special flag called the Granularity Bit.
+If you set this bit to 1, the CPU takes your 20-bit limit and physically multiplies it by 4 Kilobytes (0x1000 in hex).
+0xFFFFF (Our 20-bit Limit) * 0x1000 (The 4KB Multiplier) = 0xFFFFFFFF (4 Gigabytes!)
+
+So, our raw Limit value needs to be 0xFFFFF. We chop this into two pieces:
+Limit Low (16 bits): 0xFFFF
+Limit High (4 bits): 1111 in binary (which is hex 0xF. We will fuse this with the Flags byte).
+
+This single byte defines the laws for this segment. Let's read the binary from left to right (Bit 7 down to Bit 0):
+    Bit 7 (Present) = 1: "Yes, this segment physically exists in RAM."
+    Bits 6 & 5 (Privilege) = 00: "This is Ring 0." (If we were making a user-space application segment later, this would be 11 for Ring 3).
+    Bit 4 (Descriptor Type) = 1: "This is a memory segment, not a system trap gate."
+    Bit 3 (Executable) = 1: "The CPU is allowed to run code here." (For the Data Segment, this is 0).
+    Bit 2 (Conforming) = 0: "Lower privilege rings cannot jump into this code."
+    Bit 1 (Readable) = 1: "We can read the raw bytes of the code."
+    Bit 0 (Accessed) = 0: "The CPU will flip this to 1 when it uses it. We start it at 0."
+    Result: 10011010b (Hex: 0x9A)
+
+More information on : https://wiki.osdev.org/GDT_Tutorial
