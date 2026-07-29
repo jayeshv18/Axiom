@@ -25,9 +25,9 @@ org 0x7c00 ;the BIOS always loads us at exactly 0x7C00, we create a variable, NA
 ;firstly need to set ex to 0
 mov ax,0x0000 
 mov es,ax ;set the extra segment to 0
-//the logic for using the es nd bx regs is written in "es and bx segment mapping limitation "
+;the logic for using the es nd bx regs is written in "es and bx segment mapping limitation "
 mov ah,0x02 ;BIOS command for "Read Sectors into Memory"
-mov al,1;How many sectors do we want to read? Just 1 for now
+mov al,15;How many sectors do we want to read? Earlier it was grabbing 1 sector and leaving the kernel behind on the disk. Now we have updated it to 15 sectors to pull a massive chunk of data into RAM so we grab both Stage 2 and the entire C kernel. 
 mov ch,0 ;Cylinder 0
 mov cl,2 ;Sector 2
 mov dh,0;Head 0
