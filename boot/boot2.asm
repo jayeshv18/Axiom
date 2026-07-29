@@ -22,6 +22,7 @@ mov cr0,eax
 ;a Far Jump tells the CPU to jump to a new memory segment. When the CPU sees a segment change, it panics, dumps everything out of its pipeline, and re-reads the upcoming instructions using the new 32-bit laws.
 
 jmp 0x08:init_pm
+
 bits 32 ;tell NASM to stop generating 16-bit code and switch to 32-bit
 init_pm:
 ;update all the old segment registers to point to our new 32-bit Data Segment
@@ -32,8 +33,8 @@ init_pm:
     mov es, ax
     mov fs, ax
     mov gs, ax
+call 0x8200 ;If we force stage2.asm to be exactly 512 bytes long (just like boot.asm), it will take up memory from 0x8000 to 0x81FF. That means our C kernel will physically start at exactly 0x8200.
 jmp $
-
 ;GDT
 gdt_start:
     gdt_null:
@@ -66,3 +67,5 @@ gdt_descriptor:
     ;The problem? A 16-bit register (dw) can only count up to 65,535 (0xFFFF).
     ;To solve this, Intel hardcoded the CPU to always add 1 to whatever number you give it. So, we subtract 1 to balance the equation.
     dd gdt_start ;physical 32-bit starting address of our table
+
+times 512-($-$$) db 0 ;pad the rest of the bootloader with zeros to make it exactly 512 bytes long, this makes the kernel start from 0x8200
