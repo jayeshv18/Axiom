@@ -117,3 +117,14 @@ The color byte is split into two 4-bit nibbles:
     The bottom 4 bits define the foreground color. (e.g., 0xF is White, 0x2 is Green).
 
     if we want to print a White 'X' on a Black background, the color byte would be 0x0F.
+
+-> Compilation
+Standard C compilers (like GCC) do not naturally build code for bare metal. By default, they try to compile executables for operating systems (like Linux or Windows), injecting massive standard libraries (libc), system hooks, and heavy memory overhead.
+To ensure your C logic executes with absolute maximum speed and performance efficiency, we must instruct the compiler to generate raw, unadulterated 32-bit machine code.
+To do this, we need an assembly bridge, specific compiler flags, and a raw linker command.
+
+When the CPU jumps to your C code, it doesn't know what main() is. It blindly executes the very first physical byte of the file. If the C compiler decides to put a random helper variable at the top of the compiled file instead of your main() function, the CPU will execute that variable and crash.
+We need a tiny assembly file whose only job is to be the physical first bytes of the kernel, acting as an anchor that safely calls your C function.
+written in src/kernel_entry.asm
+
+.
