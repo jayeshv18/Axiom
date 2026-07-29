@@ -92,3 +92,28 @@ To create a standard, high-performance "Flat Memory Model" (where the whole 4GB 
     This entry (Index 2) defines the 4-Gigabyte arena for our variables, stacks, and data arrays. It is exactly identical to the Code Segment, with one tiny difference in the security flags:
         Executable: 0 (Do not execute data as code)
         Writable: 1 (We are allowed to change the variables)
+
+-> 32-bit world
+the moment flipped that CR0 switch and left Real Mode, we lost everything. The BIOS is gone. Standard interrupts are dead. If we try to call int 0x10 to print a character to the screen right now, the CPU will panic and crash.
+before we can start building complex schedulers or memory managers, we need our kernel to be able to talk to us. We have to bypass the dead BIOS and talk directly to the physical video card on the motherboard.
+
+-> Memory-Mapped I/O and the VGA Buffer
+In standard programming, if we want to print something, we #include <stdio.h> and call printf().
+Here on the bare metal, <stdio.h> does not exist. There is no standard library. There is no operating system underneath you to handle the text, you are the operating system.
+To display text, we use Memory-Mapped I/O.
+
+The hardware engineers hardwired the video card to constantly monitor a very specific chunk of our physical RAM. 
+In standard VGA text mode, this chunk of memory starts at the exact physical address 0xB8000.
+If you put a specific byte into address 0xB8000, the video card instantly snatches it and draws it on the top-left pixel of our monitor.
+
+The video card doesn't just need to know what letter to print; it needs to know how to print it. Therefore, every single character on the screen requires exactly two bytes of memory:
+
+    Byte 1 (The Character): The ASCII value of the letter want to print (e.g., 'X').
+    Byte 2 (The Color): A special byte that defines the foreground text color and the background color.
+
+The color byte is split into two 4-bit nibbles:
+
+    The top 4 bits define the background color. (e.g., 0x0 is Black).
+    The bottom 4 bits define the foreground color. (e.g., 0xF is White, 0x2 is Green).
+
+    if we want to print a White 'X' on a Black background, the color byte would be 0x0F.
