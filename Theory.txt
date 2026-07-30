@@ -127,4 +127,4 @@ When the CPU jumps to your C code, it doesn't know what main() is. It blindly ex
 We need a tiny assembly file whose only job is to be the physical first bytes of the kernel, acting as an anchor that safely calls your C function.
 written in src/kernel_entry.asm
 
-.
+To automate the building and compilation of all the files together we wrote a makefile to automate the compiling process for us.
