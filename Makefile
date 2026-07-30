@@ -9,12 +9,12 @@ build:
 	mkdir -p build
 
 #Compile Stage 1
-build/boot.bin: boot/boot.asm | build
-	nasm -f bin boot/boot.asm -o build/boot.bin
+build/boot.bin: src/boot/boot.asm | build
+	nasm -f bin src/boot/boot.asm -o build/boot.bin
 
 #Compile Stage 2
-build/boot2.bin: boot/boot2.asm | build
-	nasm -f bin boot/boot2.asm -o build/boot2.bin
+build/boot2.bin: src/boot/boot2.asm | build
+	nasm -f bin src/boot/boot2.asm -o build/boot2.bin
 
 #Compile the Assembly Bridge
 build/kernel_entry.o: src/kernel_entry.asm | build
@@ -22,11 +22,14 @@ build/kernel_entry.o: src/kernel_entry.asm | build
 
 #Compile the C Kernel
 build/kernel.o: src/kernel.c | build
-	gcc -m32 -ffreestanding -fno-pie -fno-pic -c src/kernel.c -o build/kernel.o
+	gcc -m32 -I include -ffreestanding -fno-pie -fno-pic -c src/kernel.c -o build/kernel.o
 
 # Link the Kernel
-build/kernel.bin: build/kernel_entry.o build/kernel.o
-	ld -m elf_i386 -o build/kernel.bin -Ttext 0x8200 build/kernel_entry.o build/kernel.o --oformat binary
+build/kernel.bin: build/kernel_entry.o build/kernel.o build/vga_print.o
+	ld -m elf_i386 -o build/kernel.bin -Ttext 0x8200 build/kernel_entry.o build/kernel.o build/vga_print.o --oformat binary
+
+build/vga_print.o: src/vga_print.c | build
+	gcc -m32 -I include -ffreestanding -fno-pie -fno-pic -c src/vga_print.c -o build/vga_print.o
 
 #Fuse the Final OS Image
 build/os.img: build/boot.bin build/boot2.bin build/kernel.bin

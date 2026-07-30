@@ -120,11 +120,29 @@ The color byte is split into two 4-bit nibbles:
 
 -> Compilation
 Standard C compilers (like GCC) do not naturally build code for bare metal. By default, they try to compile executables for operating systems (like Linux or Windows), injecting massive standard libraries (libc), system hooks, and heavy memory overhead.
-To ensure your C logic executes with absolute maximum speed and performance efficiency, we must instruct the compiler to generate raw, unadulterated 32-bit machine code.
+To ensure our C logic executes with absolute maximum speed and performance efficiency, we must instruct the compiler to generate raw, unadulterated 32-bit machine code.
 To do this, we need an assembly bridge, specific compiler flags, and a raw linker command.
 
-When the CPU jumps to your C code, it doesn't know what main() is. It blindly executes the very first physical byte of the file. If the C compiler decides to put a random helper variable at the top of the compiled file instead of your main() function, the CPU will execute that variable and crash.
-We need a tiny assembly file whose only job is to be the physical first bytes of the kernel, acting as an anchor that safely calls your C function.
+When the CPU jumps to our C code, it doesn't know what main() is. It blindly executes the very first physical byte of the file. If the C compiler decides to put a random helper variable at the top of the compiled file instead of your main() function, the CPU will execute that variable and crash.
+We need a tiny assembly file whose only job is to be the physical first bytes of the kernel, acting as an anchor that safely calls our C function.
 written in src/kernel_entry.asm
 
 To automate the building and compilation of all the files together we wrote a makefile to automate the compiling process for us.
+
+-> VGA Print Engine & VGA Text Algorithm
+The VGA hardware doesn't understand pixels yet; it only understands character cells. It maps exactly 2,000 cells to our screen: 80 columns wide by 25 rows high.
+RAM is one-dimensional (a flat line of bytes), but our screen is two-dimensional (X and Y coordinates). If we want to print a character at a specific row and column, you have to flatten those coordinates into a raw memory offset to add to 0xB8000.
+
+algorithm: Offset = (Row * 80 + Column) * 2
+We multiply the final result by 2 because of our 2-byte hardware contract: 1 byte for the Character, 1 byte for the Color
+
+To print a continuous string, the kernel must keep track of its current position globally (using variables like cursor_row and cursor_col).
+When we loop through a string character by character (checking for the \0 null terminator), the algorithm has to handle two strict edge cases:
+
+    The Newline Intercept (\n): If the character is a newline, we can't push it to VGA memory (it will print a weird symbol). 
+    our algorithm must intercept it, increment the cursor_row, and reset cursor_col to 0.
+
+    The Screen Wrap: If cursor_col hits 80, the hardware won't automatically wrap for us. 
+    our algorithm must manually catch it, reset cursor_col to 0, and increment cursor_row.
+
+
