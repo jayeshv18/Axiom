@@ -1,4 +1,4 @@
-# Tell Make that 'run' and 'clean' aren't actual files, just commands
+#Tell Make that 'run' and 'clean' aren't actual files, just commands
 .PHONY: all run clean
 
 #The default command if you just type 'make'
@@ -24,9 +24,9 @@ build/kernel_entry.o: src/kernel_entry.asm | build
 build/kernel.o: src/kernel.c | build
 	gcc -m32 -I include -ffreestanding -fno-pie -fno-pic -c src/kernel.c -o build/kernel.o
 
-# Link the Kernel
+#Link the Kernel
 build/kernel.bin: build/kernel_entry.o build/kernel.o build/vga_print.o
-	ld -m elf_i386 -o build/kernel.bin -Ttext 0x8200 build/kernel_entry.o build/kernel.o build/vga_print.o --oformat binary
+	ld -m elf_i386 -T linker.ld -o build/kernel.bin build/kernel_entry.o build/vga_print.o build/kernel.o
 
 build/vga_print.o: src/vga_print.c | build
 	gcc -m32 -I include -ffreestanding -fno-pie -fno-pic -c src/vga_print.c -o build/vga_print.o
@@ -36,10 +36,10 @@ build/os.img: build/boot.bin build/boot2.bin build/kernel.bin
 	cat build/boot.bin build/boot2.bin build/kernel.bin > build/os.img
 
 
-# Boot the OS in QEMU
+#Boot the OS in QEMU
 run: build/os.img
 	qemu-system-i386 -fda build/os.img
 
-# Nuke the build folder to start fresh
+#Nuke the build folder to start fresh
 clean:
 	rm -rf build/*
