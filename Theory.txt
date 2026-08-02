@@ -155,6 +155,200 @@ To stop the OS from crashing and to finally enable hardware input (like reading 
 
 The IDT is essentially an array of 256 pointers. When an interrupt fires (whether it's a keyboard press, a timer tick, or a "Divide by Zero" error), the CPU looks at this table to find the exact C function (Interrupt Service Routine, or ISR) it should run to handle the event.
 
+The Interrupt Descriptor Table (IDT) is the cornerstone of interrupt and exception handling in x86 protected mode and long mode (IA‑32e). 
+It replaces the real‑mode IVT (Interrupt Vector Table) and allows the operating system to attach a specific handler to each interrupt vector. 
+Below is a full technical dissection, covering architecture, descriptor formats, the hardware algorithm, and programming details exactly as a computer engineer or low‑level programmer would need.
+
+1. Role of the IDT
+Mapping vectors to handlers – Each of the 256 possible interrupt/exception vectors (0–255) is associated with an IDT descriptor.
+
+Gate mechanism – Instead of a simple jump target, the IDT uses gate descriptors that control privilege transitions, stack switching, and interrupt masking.
+
+Protected transfers – When an interrupt occurs, the CPU consults the IDT to load a new CS:RIP (EIP) in a controlled way, automatically saving the old execution context.
+
+Vectors 0–31 are reserved by Intel for exceptions. Vectors 32–255 are available for external (hardware) interrupts and software interrupts.
+
+
+2. The IDTR Register
+The location and size of the IDT are held in the IDTR (Interrupt Descriptor Table Register):
+
+Mode	Format of IDTR	LIDT operand size
+32‑bit	2 bytes LIMIT, 4 bytes BASE	6 bytes
+64‑bit	2 bytes LIMIT, 8 bytes BASE	10 bytes
+BASE – linear address of the start of the IDT.
+
+LIMIT – size of the table in bytes minus 1. Because each entry is 8 bytes (32‑bit) or 16 bytes (64‑bit), the limit must be at least 8 * (max_vector + 1) - 1 or 16 * (max_vector + 1) - 1.
+Loading the IDTR is done with LIDT m (privileged instruction, usually ring 0). Storing it is SIDT m.
+
+
+3. IDT Descriptor Types
+Three kinds of gate descriptors can reside in the IDT:
+
+Interrupt gate (type 0xE) – used for hardware interrupts and most exceptions. Clears the IF (Interrupt Flag) upon entry, blocking maskable interrupts.
+
+Trap gate (type 0xF) – used for exceptions that should not disable interrupts (e.g., debug exceptions). Does not clear IF.
+
+Task gate (type 0x5) – used for hardware task switching (rare; not available in 64‑bit mode).
+
+A descriptor marked Present=0 causes #NP (Segment Not Present) when referenced.
+
+
+4. Interrupt / Exception Handling – The Hardware Algorithm
+When an interrupt (hardware INTR, NMI, or exception) or a software interrupt (INT n, INT3, INTO) fires, the CPU executes the following micro‑architectural sequence. The description merges 32‑bit and 64‑bit specifics.
+
+Step 1 – Determine Vector Number
+For exceptions: fixed (e.g., #PF → 14).
+For hardware interrupts: supplied by the interrupt controller (PIC/LAPIC) via the data bus.
+For INT n: the immediate operand n.
+
+Step 2 – Read IDT Descriptor
+Compute offset in IDT: IDTR.base + vector * 8 (32‑bit) or * 16 (64‑bit).
+If this address exceeds IDTR.base + IDTR.limit, signal #GP (General Protection).
+Fetch the descriptor; check the Present bit. If 0 → #NP.
+Validate Type:
+    Interrupt gate (0xE) or trap gate (0xF) → continue.
+    Task gate (0x5) → perform hardware task switch (only in 32‑bit mode; not described here).
+    Else → #GP.
+
+Step 3 – Privilege Checks
+Hardware interrupts and exceptions (vectors 0–31, NMI, INTR) → gate DPL is ignored. They can transfer to a more privileged level, but the gate is always accessible regardless of CPL.
+Software interrupts (INT n, INT3, INTO) → CPL must be ≤ gate DPL. If CPL > gate DPL, #GP. This prevents unprivileged code from using INT to call a ring‑0 handler unless the OS explicitly sets a gate’s DPL to 3.
+Target code segment descriptor (referenced by the gate’s selector) must be:
+A code segment (executable, non‑system).
+Present → else #NP.
+If the segment is conforming, the new CPL remains the old CPL; no stack switch.
+If non‑conforming, the target DPL must be ≤ CPL (i.e., we can only transition to a higher or equal privilege level). If DPL > CPL → #GP.
+If DPL < CPL, a stack switch will occur.
+
+Step 4 – Determine Stack Switch and Load New Stack
+A stack switch is required when target_DPL < CPL (i.e., we are entering a more privileged level).
+
+32‑bit mode (no IST)
+The processor reads the new SS:ESP pair from the TSS (Task State Segment) of the current task:
+
+SS0:ESP0 for target ring 0
+SS1:ESP1 for target ring 1
+SS2:ESP2 for target ring 2
+
+The SS selector is loaded, and its DPL must equal the target DPL, otherwise #TS (Invalid TSS). The new stack pointer is checked for alignment.
+
+64‑bit mode
+Two mechanisms exist:
+
+    Legacy TSS – if IST = 0, the new RSP is taken from TSS.RSP0, RSP1, or RSP2 (depending on target privilege). SS is not loaded from the TSS; in 64‑bit mode SS is forced to a null selector with RPL = target DPL. The old SS and RSP are still pushed onto the new stack.
+
+    Interrupt Stack Table (IST) – if IST ≠ 0, the processor ignores the privilege‑based stack pointers and loads RSP from TSS.IST[IST] (a pre‑initialised 64‑bit stack pointer). This is used for certain critical exceptions (e.g., #DF, NMI) to guarantee a known‑good stack. The IST mechanism always performs a “stack switch” even if CPL doesn’t change; the old SS:RSP is pushed.
+
+In all cases, the new stack must be aligned to the appropriate boundary (16 bytes in 64‑bit mode, 4 bytes in 32‑bit mode after eventual pushes). A stack fault (#SS) is raised if the stack operations fail.
+
+Step 5 – Save Old Context on the Stack
+The processor pushes registers onto the new stack (or the current stack if no switch) in a fixed order.
+
+32‑bit mode stack frame
+If a stack switch occurred:
+
+    Push old SS (32 bits, upper bits zeroed).
+
+    Push old ESP.
+
+    Then, in all cases:
+
+    Push EFLAGS (32‑bit register).
+
+    Push old CS (32 bits, upper bits zeroed).
+
+    Push old EIP.
+
+If the exception supplies an error code, push the 32‑bit error code.
+Stack layout after interrupt with privilege change and error code (32‑bit):
+
+... top of new stack (lowest address)
+   error code        ← ESP after push
+   old EIP
+   old CS
+   old EFLAGS
+   old ESP
+   old SS
+... (higher addresses)
+
+Without a privilege change, the SS & ESP are omitted.
+
+64‑bit mode stack frame
+If a stack switch occurs (whether via privilege change or IST):
+
+    Push old SS (zero‑extended to 8 bytes).
+
+    Push old RSP.
+
+Then always:
+
+    Push RFLAGS (8 bytes, upper 32 bits zeroed).
+
+    Push old CS (zero‑extended to 8 bytes).
+
+    Push old RIP.
+
+If an error code is pushed, it is 8 bytes (zero‑extended).
+The stack is always 16‑byte aligned before pushing the first item; pushes themselves naturally maintain alignment.
+
+Step 6 – Load New Code Segment and Instruction Pointer
+CS is loaded with the gate’s segment selector.
+
+The new RIP/EIP is loaded with the gate’s offset.
+
+If a stack switch happened, SS and RSP/ESP have already been set.
+
+Step 7 – Clear Selected EFLAGS Bits
+After loading CS:EIP but before the first instruction of the handler executes, the processor automatically modifies EFLAGS (RFLAGS):
+
+TF (Trap Flag) ← 0 (prevents single‑step inside handler unless explicitly re‑enabled).
+VM (Virtual‑8086 Mode) ← 0.
+RF (Resume Flag) ← 0.
+NT (Nested Task) ← 0.
+For interrupt gates, additionally:
+
+    IF (Interrupt Flag) ← 0 (maskable interrupts disabled).
+    For trap gates, IF is not modified.
+
+Step 8 – Begin Handler Execution
+The CPU starts fetching instructions at the new CS:RIP in the target privilege level.
+
+5. Error Code Details
+Some exceptions push an error code to help the handler diagnose the cause. The error code format (same in 32‑bit and 64‑bit, zero‑extended when pushed) is:
+
+ 31            16 15     3 2 1 0
++----------------+--------+-+-+-+
+| Reserved       | Index  |T|I|E|
++----------------+--------+-+-+-+
+  E – External event (1 = hardware originated)
+  I – Descriptor table (1 = IDT, 0 = GDT/LDT)
+  T – Table indicator... with I: 1 = IDT, 0 = GDT/LDT (often combined)
+ Index – Selector index involved
+
+ Exceptions that do push an error code: #DF (8), #TS (10), #NP (11), #SS (12), #GP (13), #PF (14 – page fault; error code is page‑fault error format, different), #AC (17). All others (like #DE, #DB, #BP, #OF, #NM, etc.) push no error code.
+
+6. Returning from an Interrupt – IRET / IRETD / IRETQ
+The inverse operation restores the previously saved state.
+
+Pop the items in reverse order, performing privilege checks:
+
+    IRETD pops EIP, CS, EFLAGS; if return to a less privileged level, also pops ESP and SS.
+    IRETQ pops RIP, CS, RFLAGS, and (if privilege change) RSP and SS.
+    Privilege check for the return: the RPL of the popped CS and SS must be ≥ the current CPL. If returning to a lower privilege (CPL < CS.RPL), the new SS and ESP are validated.
+    If the return is to VM86 mode (EFLAGS.VM=1), special stack handling occurs.
+    Restores the processor state; the interrupted program continues at the popped CS:RIP (EIP).
+    Software handling note: To remove the error code before IRET, the handler must manually pop it (e.g., add rsp, 8).
+
+7. 64‑bit Mode Peculiarities
+    Descriptor size – 16 bytes, with 64‑bit offset.
+    IST – Enables per‑vector dedicated stacks, independent of privilege.
+    No task gates – #GP if a task gate is referenced.
+    Stack switching – SS is forced to a null selector, and the old SS is still pushed (IRETQ restores it). The TSS holds RSP0/1/2 and up to 7 IST pointers.
+    Alignment – Stack must be 16‑byte aligned before the exception frame is pushed. The hardware automatically pushes items such that alignment is maintained.
+    No automatic SS selector privilege check – Because SS is null, the CPU checks only that the new RSP from the TSS is canonical and the stack accesses are valid.
+
+
+
 To conquer the IDT, we have to execute a two-step engineering roadmap:
     The Debugging Prerequisite (itoa):
         Before we wire up the interrupts, we have a missing utility. If the CPU throws a fault (like Exception 0x0E for a Page Fault), it will pass your kernel a numerical error code. Right now, your print_string engine only understands letters. 
