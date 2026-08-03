@@ -361,5 +361,6 @@ To conquer the IDT, we have to execute a two-step engineering roadmap:
         C cannot directly handle CPU interrupts because the CPU pushes hidden registers to the stack. We have to write tiny Assembly "wrappers" that safely save the CPU state, call our C handler, and then use the iret (Interrupt Return) instruction to resume the OS.
         We have to talk to the legacy Programmable Interrupt Controller (PIC) chip to map the keyboard hardware directly to our new IDT.
 
-
+We must start with the itoa (Integer-to-ASCII) utility. Once we start hijacking the CPU's interrupt lines to build the IDT, things will inevitably break. When the CPU throws a fatal exception (like a Page Fault or a Divide-by-Zero error), it is going to hand us a raw numeric error code.
+If we can't print that exact number to the screen, we will be debugging completely blind.
 
