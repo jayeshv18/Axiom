@@ -25,11 +25,23 @@ build/kernel.o: src/kernel.c | build
 	gcc -m32 -I include -ffreestanding -fno-pie -fno-pic -c src/kernel.c -o build/kernel.o
 
 #Link the Kernel
-build/kernel.bin: build/kernel_entry.o build/kernel.o build/vga_print.o
-	ld -m elf_i386 -T linker.ld -o build/kernel.bin build/kernel_entry.o build/vga_print.o build/kernel.o
+build/kernel.bin: build/kernel_entry.o build/vga_print.o build/string.o build/idt_asm.o build/idt.o build/kernel.o
+	ld -m elf_i386 -T linker.ld -o build/kernel.bin build/kernel_entry.o build/vga_print.o build/string.o build/idt_asm.o build/idt.o build/kernel.o
 
 build/vga_print.o: src/vga_print.c | build
 	gcc -m32 -I include -ffreestanding -fno-pie -fno-pic -c src/vga_print.c -o build/vga_print.o
+
+#Compile the String Library
+build/string.o: src/string.c | build
+	gcc -m32 -I include -ffreestanding -fno-pie -fno-pic -c src/string.c -o build/string.o
+
+#Compile the IDT C Logic
+build/idt.o: src/idt.c | build
+	gcc -m32 -I include -ffreestanding -fno-pie -fno-pic -c src/idt.c -o build/idt.o
+
+#Compile the IDT Assembly Bridge
+build/idt_asm.o: src/idt_asm.asm | build
+	nasm -f elf32 src/idt_asm.asm -o build/idt_asm.o
 
 #Fuse the Final OS Image
 build/os.img: build/boot.bin build/boot2.bin build/kernel.bin
