@@ -83,3 +83,9 @@ void hex_to_string(unsigned int num, char* str){
 }
 
 
+void memory_set(void *dest, char val, int count) { /*dest is passed as a void * (a generic memory pointer), we cannot do pointer arithmetic on it directly. We have to cast it to a byte-sized pointer (char * or unsigned char *) so we can loop through it exactly one byte at a time*/
+    char *temp = (char *)dest;
+    for (int i = 0; i < count; i++) {
+        temp[i] = val;
+    }
+}
