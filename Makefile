@@ -25,8 +25,8 @@ build/kernel.o: src/kernel.c | build
 	gcc -m32 -I include -ffreestanding -fno-pie -fno-pic -c src/kernel.c -o build/kernel.o
 
 #Link the Kernel
-build/kernel.bin: build/kernel_entry.o build/vga_print.o build/string.o build/idt_asm.o build/idt.o build/kernel.o
-	ld -m elf_i386 -T linker.ld -o build/kernel.bin build/kernel_entry.o build/vga_print.o build/string.o build/idt_asm.o build/idt.o build/kernel.o
+build/kernel.bin: build/kernel_entry.o build/vga_print.o build/string.o build/idt_asm.o build/idt.o build/isr_asm.o build/isr.o build/kernel.o
+	ld -m elf_i386 -T linker.ld -o build/kernel.bin build/kernel_entry.o build/vga_print.o build/string.o build/idt_asm.o build/idt.o build/isr_asm.o build/isr.o build/kernel.o
 
 build/vga_print.o: src/vga_print.c | build
 	gcc -m32 -I include -ffreestanding -fno-pie -fno-pic -c src/vga_print.c -o build/vga_print.o
@@ -47,6 +47,11 @@ build/idt_asm.o: src/idt_asm.asm | build
 build/os.img: build/boot.bin build/boot2.bin build/kernel.bin
 	cat build/boot.bin build/boot2.bin build/kernel.bin > build/os.img
 
+build/isr_asm.o: src/isr.asm | build
+	nasm -f elf32 src/isr.asm -o build/isr_asm.o
+
+build/isr.o: src/isr.c | build
+	gcc -m32 -I include -ffreestanding -fno-pie -fno-pic -c src/isr.c -o build/isr.o
 
 #Boot the OS in QEMU
 run: build/os.img
