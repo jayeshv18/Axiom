@@ -1,6 +1,9 @@
 #include "include/idt.h"
 #include "include/string.h"
 
+extern void isr0(); /*declare the external assembly function isr0, which is defined in isr.asm. This function serves as the entry point for handling interrupt 0 (Divide by Zero Exception) and is responsible for saving the CPU state, calling the C fault_handler function, and restoring the CPU state before returning from the interrupt.*/
+extern void load_idt();
+
 struct idt_entry idt[256]; /*the IDT is an array of 256 entries, one for each possible interrupt number. Each entry contains the information needed to handle a specific interrupt.*/
 struct idt_ptr idtp;/*the idtp structure holds the size and base address of the IDT. It is used to load the IDT into the CPU's IDTR register, allowing the CPU to locate and use the IDT when handling interrupts.*/
 
@@ -15,7 +18,7 @@ void idt_set_gate(unsigned char num, unsigned int base, unsigned short sel, unsi
 void idt_init(){
     idtp.limit=sizeof(struct idt_entry)*256-1; /*the size of the array in bytes. set the limit of the IDT to the size of the IDT in bytes minus 1. This tells the CPU how many entries are in the IDT.*/
     idtp.base=(unsigned int)&idt; /*the physical memory address of the array. set the base address of the IDT to the address of the idt array. This tells the CPU where to find the IDT in memory.*/
-    memset(&idt,0,sizeof(struct idt_entry)*256); /*initialize all entries in the IDT to zero. This ensures that any unused entries are set to a known state, preventing undefined behavior when an interrupt occurs.*/
     memory_set(&idt,0,sizeof(struct idt_entry)*256); /*initialize all entries in the IDT to zero. This ensures that any unused entries are set to a known state, preventing undefined behavior when an interrupt occurs.*/
+    idt_set_gate(0, (unsigned int)isr0, 0x08, 0x8E);
     load_idt(); /*load the IDT into the CPU's IDTR register. This tells the CPU to use the newly initialized IDT when handling interrupts.*/
 }

@@ -369,3 +369,32 @@ To conquer the IDT, we have to execute a two-step engineering roadmap:
 We must start with the itoa (Integer-to-ASCII) utility. Once we start hijacking the CPU's interrupt lines to build the IDT, things will inevitably break. When the CPU throws a fatal exception (like a Page Fault or a Divide-by-Zero error), it is going to hand us a raw numeric error code.
 If we can't print that exact number to the screen, we will be debugging completely blind.
 
+
+
+Fatal Problem 1: The Register Massacre
+When you write normal C code, the compiler knows exactly when a function is being called. It follows standard calling conventions (like cdecl) and safely manages the CPU registers (EAX, EBX, ECX, etc.).
+
+An interrupt, however, is entirely asynchronous.
+Imagine your kernel is halfway through a complex math equation. It has crucial data stored in EAX and EBX. Suddenly, a hardware timer ticks, triggering an interrupt.
+
+If the CPU jumps straight into your C page_fault_handler, that C code is going to start doing its own math. It will overwrite EAX and EBX to print text to the screen. When the C function finishes, it returns to your original math equation—but the registers have been silently overwritten. Your original program continues executing with corrupted data and completely collapses.
+
+The Fix: We need an assembly stub to act as a "freeze-frame." The absolute first thing the stub must do is execute pushad (Push All Double-words). This saves all 8 general-purpose registers to the stack. We run the C code, and then execute popad to restore them. The interrupted program never even knows it was paused.
+
+
+
+Fatal Problem 2: ret vs. iret
+When a standard C function finishes, the compiler drops a ret (return) instruction at the end. The ret instruction assumes there is exactly one thing on the top of the stack: the memory address of where to go back to (EIP).
+
+Hardware interrupts do not work this way.
+Because interrupts happen violently and abruptly, the CPU automatically pushes three hidden things to the stack the moment the interrupt fires, not just one:
+
+EFLAGS (The current status flags of the CPU)
+
+CS (The Code Segment)
+
+EIP (The instruction pointer to return to)
+
+If your C function ends with a standard ret, the CPU will pull the EIP off the stack, but leave CS and EFLAGS sitting there, permanently misaligning your entire stack and instantly crashing the system.
+
+The Fix: To return from an interrupt, you must use the iret (Interrupt Return) assembly instruction. iret specifically knows how to pop all three of those hidden values back into the CPU perfectly. A standard C compiler cannot generate an iret instruction.
